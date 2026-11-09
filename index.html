@@ -806,23 +806,32 @@ const hasMusic=Object.values(CONFIG.music||{}).some(Boolean);
 function musicSrc(id){const M=CONFIG.music||{};if(M[id])return M[id];if(id==='thread-invite'||id==='thread-wishes')return M.messages||'';return ''}
 function musTarget(){return mus.duck?DUCK:MUSIC_VOL}
 mus.volOK=(()=>{try{const t=new Audio();t.volume=0.5;return t.volume===0.5}catch(e){return false}})();
-mus.hidden=false;
+mus.hidden=false;mus.ctx=null;mus.canFade=mus.volOK;
+function getV(a){return a._g?a._g.gain.value:a.volume}
+function setV(a,v){if(a._g)a._g.gain.value=v;else a.volume=v}
+function musCtxInit(){
+  if(mus.volOK||mus.ctx)return;
+  try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    mus.ctx=new AC();mus.canFade=true;
+    if(navigator.audioSession)navigator.audioSession.type='playback';
+  }catch(e){mus.ctx=null}
+}
 function musShould(){return mus.on&&!mus.hidden&&!mus.muted&&!(mus.duck&&!mus.volOK)}
 function musKillAll(){clearInterval(mus.t);mus.list.forEach(a=>{try{a.pause()}catch(e){}})}
 function musFade(){
   clearInterval(mus.t);clearTimeout(mus.kt);
   const should=musShould();
-  if(!mus.volOK){ /* iOS: không chỉnh được volume, chỉ bật/tắt */
+  if(!mus.canFade){ /* không chỉnh được volume: chỉ bật/tắt */
     mus.list.forEach(a=>{if(a===mus.a&&should){if(a.paused)a.play().catch(()=>{})}else if(!a.paused)a.pause()});
     return;
   }
   mus.t=setInterval(()=>{
     let busy=false;
     mus.list.forEach(a=>{
-      const live=a===mus.a&&should,want=live?musTarget():0,d=want-a.volume;
+      const live=a===mus.a&&should,want=live?musTarget():0,d=want-getV(a);
       if(live&&a.paused)a.play().catch(()=>{});
-      if(Math.abs(d)>0.01){a.volume=Math.max(0,Math.min(1,a.volume+Math.sign(d)*0.03));busy=true}
-      else{a.volume=want;if(!live&&!a.paused)a.pause()}
+      if(Math.abs(d)>0.01){setV(a,Math.max(0,Math.min(1,getV(a)+Math.sign(d)*0.008)));busy=true}
+      else{setV(a,want);if(!live&&!a.paused)a.pause()}
     });
     if(!busy)clearInterval(mus.t);
   },50);
@@ -833,7 +842,10 @@ function musPlay(src){
   if(!src||src===mus.cur)return;
   mus.cur=src;
   let a=mus.list.find(x=>x.getAttribute('data-src')===src);
-  if(!a){a=new Audio(src);a.setAttribute('data-src',src);a.loop=true;a.preload='auto';a.volume=mus.volOK?0:1;mus.list.push(a)}
+  if(!a){a=new Audio(src);a.setAttribute('data-src',src);a.loop=true;a.preload='auto';
+    if(mus.ctx&&!mus.volOK){try{const src=mus.ctx.createMediaElementSource(a),g=mus.ctx.createGain();g.gain.value=0;src.connect(g);g.connect(mus.ctx.destination);a._g=g}catch(e){}}
+    else a.volume=0;
+    mus.list.push(a)}
   mus.a=a;
   musFade();
 }
@@ -849,11 +861,11 @@ function unlock(){
   const l=$('#lock');if(l.classList.contains('off'))return;
   l.classList.add('off');l.inert=true;
   mus.on=true;
-  if(hasMusic){$('#music').hidden=false;musUI();musPlay(musicSrc(stack[stack.length-1]))}
+  if(hasMusic){musCtxInit();if(mus.ctx&&mus.ctx.state==='suspended')mus.ctx.resume();$('#music').hidden=false;musUI();musPlay(musicSrc(stack[stack.length-1]))}
 }
 $('#lock').addEventListener('click',unlock);
 function musHide(){mus.hidden=true;musKillAll()}
-function musShow(){if(!mus.hidden)return;mus.hidden=false;musFade()}
+function musShow(){if(!mus.hidden)return;mus.hidden=false;if(mus.ctx&&mus.ctx.state!=='running')mus.ctx.resume().catch(()=>{});musFade()}
 document.addEventListener('visibilitychange',()=>{document.hidden?musHide():musShow()});
 window.addEventListener('pagehide',musHide);
 window.addEventListener('pageshow',e=>{if(e.persisted)musShow()});
