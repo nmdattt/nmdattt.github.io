@@ -810,6 +810,7 @@ mus.hidden=false;mus.ctx=null;mus.canFade=mus.volOK;
 function getV(a){return a._g?a._g.gain.value:a.volume}
 function setV(a,v){if(a._g)a._g.gain.value=v;else a.volume=v}
 function musCtxInit(){
+  return; /* iPhone: cắt bài cũ ngay, không crossfade bằng Web Audio */
   if(mus.volOK||mus.ctx)return;
   try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
     mus.ctx=new AC();mus.canFade=true;
