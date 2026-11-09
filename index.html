@@ -801,7 +801,8 @@ const leave={calls:resetCall,'thread-invite'(){invTimers.forEach(clearTimeout)}}
 /* lock + music */
 const MUSIC_VOL=0.175,DUCK=0.045;
 const mus={cur:'',a:null,key:'gradcard:mute',muted:false,duck:false,on:false,t:null};
-try{mus.muted=localStorage.getItem(mus.key)==='1'}catch(e){}
+mus.muted=true; /* mặc định TẮT nhạc, khách tự bật */
+try{if(localStorage.getItem(mus.key)==='0')mus.muted=false}catch(e){}
 const hasMusic=Object.values(CONFIG.music||{}).some(Boolean);
 function musicSrc(id){const M=CONFIG.music||{};if(M[id])return M[id];if(id==='thread-invite'||id==='thread-wishes')return M.messages||'';return ''}
 function musTarget(){return mus.duck?DUCK:MUSIC_VOL}
@@ -840,7 +841,8 @@ function musFade(){
 }
 mus.list=[];
 function musPlay(src){
-  if(!src||src===mus.cur)return;
+  if(!src||mus.muted)return; /* đang tắt: không tải nhạc */
+  if(src===mus.cur)return;
   mus.cur=src;
   let a=mus.list.find(x=>x.getAttribute('data-src')===src);
   if(!a){a=new Audio(src);a.setAttribute('data-src',src);a.loop=true;a.preload='auto';
@@ -854,7 +856,9 @@ function musForScreen(){if(!mus.on)return;musPlay(musicSrc(stack[stack.length-1]
 function musUI(){const b=$('#music');b.classList.toggle('muted',mus.muted);b.setAttribute('aria-pressed',mus.muted);b.setAttribute('aria-label',mus.muted?'Bật nhạc':'Tắt nhạc')}
 $('#music').addEventListener('click',()=>{
   mus.muted=!mus.muted;try{localStorage.setItem(mus.key,mus.muted?'1':'0')}catch(e){}
-  musUI();musFade();
+  musUI();
+  if(!mus.muted)musPlay(musicSrc(stack[stack.length-1]));
+  musFade();
 });
 document.addEventListener('play',e=>{if(e.target.tagName==='VIDEO'){mus.duck=true;musFade()}},true);
 ['pause','ended'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target.tagName==='VIDEO'){mus.duck=false;musFade()}},true));
