@@ -546,7 +546,7 @@ function render(){
   $('#phone').dataset.tone=stack[stack.length-1]==='calls'?'dark':'light';
   if(typeof musForScreen==='function')musForScreen();
 }
-function go(id){if(stack[stack.length-1]===id)return;stack.push(id);render();(enter[id]||(()=>{}))()}
+function go(id){if(stack[stack.length-1]===id)return;stack.push(id);track('screen',id);render();(enter[id]||(()=>{}))()}
 function back(){if(stack.length>1){const left=stack.pop();render();(leave[left]||(()=>{}))()}}
 document.addEventListener('click',e=>{
   const o=e.target.closest('[data-open]');if(o){go(o.dataset.open);return}
@@ -593,7 +593,7 @@ $('#decline').addEventListener('click',()=>{
   $('#decline').style.transform=`translate(${x}px,${yv}px) rotate(${x}deg)`;
   toast(dodges[dodgeN%dodges.length]);dodgeN++;
 });
-$('#accept').addEventListener('click',()=>{
+$('#accept').addEventListener('click',()=>{track('accept');
   $('#call-in').hidden=true;$('#call-on').hidden=false;
   let sec=0;$('#call-t').textContent='00:00';
   callTimer=setInterval(()=>{sec++;$('#call-t').textContent=`${p2(Math.floor(sec/60))}:${p2(sec%60)}`},1000);
@@ -798,6 +798,42 @@ const enter={
 };
 const leave={calls:resetCall,'thread-invite'(){invTimers.forEach(clearTimeout)}};
 
+
+/* tracking ẩn danh: ghi lượt mở vào Google Sheet (không lưu tên/IP) */
+const TRK={vid:'',seen:{},off:false};
+(function(){
+  try{
+    const q=new URLSearchParams(location.search);
+    if(q.has('me')){localStorage.setItem('gradcard:me','1')}      // ?me = máy của chủ thiệp, không đếm
+    if(q.has('unme')){localStorage.removeItem('gradcard:me')}
+    TRK.off=localStorage.getItem('gradcard:me')==='1';
+    TRK.vid=localStorage.getItem('gradcard:vid')||'';
+    if(!TRK.vid){TRK.vid=Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);localStorage.setItem('gradcard:vid',TRK.vid)}
+  }catch(e){TRK.vid=TRK.vid||('t'+Math.random().toString(36).slice(2,8))}
+  if(navigator.webdriver)TRK.off=true;
+})();
+function trkDevice(){
+  const u=navigator.userAgent;
+  const os=/iPhone|iPad|iPod/.test(u)?'iPhone/iPad':/Android/.test(u)?'Android':/Macintosh/.test(u)?'Mac':/Windows/.test(u)?'Windows':'Khác';
+  return os;
+}
+function trkSource(){
+  try{const f=new URLSearchParams(location.search).get('from');if(f)return f.slice(0,30)}catch(e){}
+  const u=navigator.userAgent;
+  if(/Zalo/i.test(u))return 'Zalo';
+  if(/FBAN|FBAV|FB_IAB|Messenger/i.test(u))return 'Facebook/Messenger';
+  if(/Instagram/i.test(u))return 'Instagram';
+  if(/TikTok|musical_ly/i.test(u))return 'TikTok';
+  try{if(document.referrer)return new URL(document.referrer).hostname.slice(0,40)}catch(e){}
+  return 'trực tiếp';
+}
+function track(ev,screen){
+  if(TRK.off||!CONFIG.endpoint)return;
+  const key=ev+':'+(screen||'');if(TRK.seen[key])return;TRK.seen[key]=1;
+  try{fetch(CONFIG.endpoint,{method:'POST',mode:'no-cors',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({action:'hit',vid:TRK.vid,ev:ev,screen:screen||'',dev:trkDevice(),src:trkSource(),ts:Date.now()})}).catch(()=>{})}catch(e){}
+}
+
 /* lock + music */
 const MUSIC_VOL=0.175,DUCK=0.045;
 const mus={cur:'',a:null,key:'gradcard:mute',muted:false,duck:false,on:false,t:null};
@@ -864,7 +900,7 @@ document.addEventListener('play',e=>{if(e.target.tagName==='VIDEO'){mus.duck=tru
 ['pause','ended'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target.tagName==='VIDEO'){mus.duck=false;musFade()}},true));
 function unlock(){
   const l=$('#lock');if(l.classList.contains('off'))return;
-  l.classList.add('off');l.inert=true;
+  l.classList.add('off');l.inert=true;track('unlock');
   mus.on=true;
   if(hasMusic){musCtxInit();if(mus.ctx&&mus.ctx.state==='suspended')mus.ctx.resume();$('#music').hidden=false;musUI();musPlay(musicSrc(stack[stack.length-1]))}
 }
@@ -881,7 +917,7 @@ function lockInit(){
   $('#lk-d').textContent=new Date().toLocaleDateString('vi-VN',{weekday:'long',day:'numeric',month:'long'});
   const tick=()=>{$('#lk-t').textContent=new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',hour12:false})};tick();setInterval(tick,20000);
 }
-lockInit();
+lockInit();track('open');
 renderGrid();renderCalendar();renderMaps();restoreRsvp();render();
 </script>
 </body>
